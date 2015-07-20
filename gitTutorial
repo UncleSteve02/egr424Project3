@@ -1,0 +1,17 @@
+
+1) git --help
+
+2) git status 
+  (keeps track of all changes in project)
+
+3) git pull
+
+  create a file
+  edit README
+  git status
+  git add <files>
+  git commit -m ""
+  git pull
+
+4) git push
+  git status
