@@ -18,45 +18,6 @@
 //      void lock_release(unsigned *threadlockptr);     // You write this
 unsigned threadlock;
 
-// These are functions you have to write. Right now they are do-nothing stubs.
-void lock_init(unsigned *lock)
-{
-  // iprintf("in lock_init\r\n");
-  asm volatile ("clrex;"
-                "mov r2, #1;"
-                "str r2, [r0];"
-                );
-  // iprintf("out lock_init\r\n");
-}
-
-void lock_indicate_failure(void)
-{
-  asm volatile("clrex;"
-               "mov r0, #0;"
-               "bx lr"
-              );
-}
-
-unsigned lock_acquire(unsigned *lock)
-{
-  asm volatile ("mov r1, #0;"
-                "ldrex r2, [r0];"
-                "cmp r2, r1;"
-                "itt ne;"
-                "strexne r2, r1, [r0];"
-                "cmpne r2, #1;"
-                "beq lock_indicate_failure;"
-                "mov r0, #1;"
-                "bx lr"
-                );
-  return 1; // always succeeds
-}
-
-void lock_release(unsigned *lock)
-{
-  lock_init(lock);
-}
-
 typedef struct {
   int active;       // non-zero means thread is allowed to run
   char *stack;      // pointer to TOP of stack (highest memory location)
@@ -71,12 +32,16 @@ typedef void (*thread_t)(void);
 // the threads statically by placing their function addresses in
 // threadTable[]. A more realistic kernel will allow dynamic creation
 // and termination of threads.
-extern void thread1(void);
-extern void thread2(void);
+extern void thread1_UART(void);
+extern void thread2_LED(void);
+extern void thread3_OLED(void);
+extern void thread4_UART(void);
 
 static thread_t threadTable[] = {
-  thread1,
-  thread2
+  thread1_UART,
+  thread2_LED,
+  thread3_OLED,
+  thread4_UART
 };
 #define NUM_THREADS (sizeof(threadTable)/sizeof(threadTable[0]))
 

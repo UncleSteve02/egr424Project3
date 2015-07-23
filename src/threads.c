@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include "scheduler.h"
+#include "lock.h"
 
-void thread1(void)
+void thread1_UART(void)
 {
   while (1) {
     if (lock_acquire(&threadlock)) {
@@ -18,14 +19,22 @@ void thread1(void)
   }
 }
 
-void thread2(void)
+void thread2_LED(void)
+{
+
+}
+
+void thread3_OLED(void)
+{
+
+}
+
+void thread4_UART(void)
 {
   while (1) {
     if (lock_acquire(&threadlock)) {
       // Simulate code that is occasionally interrupted
-      iprintf("this is t");
-          yield(); // context switch "interrupt"
-      iprintf("hread number 2\r\n");
+      iprintf("this is thread number 2\r\n");
 
       lock_release(&threadlock);
     }
