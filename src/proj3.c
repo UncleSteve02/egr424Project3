@@ -3,8 +3,11 @@
 #include <stdlib.h>
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
+#include "inc/lm3s6965.h"
+#include "driverlib/interrupt.h"
 #include "driverlib/gpio.h"
 #include "driverlib/sysctl.h"
+#include "driverlib/systick.h"
 #include "driverlib/uart.h"
 #include "rit128x96x4.h"
 #include "scheduler.h"
@@ -21,7 +24,7 @@ unsigned threadlock;
 typedef struct {
   int active;       // non-zero means thread is allowed to run
   char *stack;      // pointer to TOP of stack (highest memory location)
-  jmp_buf state;    // saved state for longjmp()
+  unsigned state[40]; // saved state of thread on a 10 element array
 } threadStruct_t;
 
 // thread_t is a pointer to function with no parameters and
@@ -47,22 +50,92 @@ static thread_t threadTable[] = {
 
 // These static global variables are used in scheduler(), in
 // the yield() function, and in threadStarter()
-static jmp_buf scheduler_buf;   // saves the state of the scheduler
 static threadStruct_t threads[NUM_THREADS]; // the thread table
 unsigned currThread;    // The currently active thread
+
+void initializePeriphs(void)
+{
+  //
+  // CLOCK
+  //
+  // Set the clocking to run directly from the crystal.
+  SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
+                 SYSCTL_XTAL_8MHZ);
+  
+  //
+  // LED
+  //
+  // Enable the GPIO port that is used for the on-board LED.
+  SYSCTL_RCGC2_R = SYSCTL_RCGC2_GPIOF;
+
+  // Do a dummy read to insert a few cycles after enabling the peripheral.
+  volatile unsigned long ulLoop = SYSCTL_RCGC2_R;
+
+  // Enable the GPIO pin for the LED (PF0).  Set the direction as output, and
+  // enable the GPIO pin for digital function.
+  GPIO_PORTF_DIR_R = 0x01;
+  GPIO_PORTF_DEN_R = 0x01;
+
+  // 
+  // OLED
+  //
+  // Initialize the OLED display and write status.
+  RIT128x96x4Init(1000000);
+  RIT128x96x4StringDraw("Project 3", 20,  0, 15);
+
+  //
+  // UART
+  //
+  // Enable the peripherals used by this example.
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+
+  // Set GPIO A0 and A1 as UART pins.
+  GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+
+  // Configure the UART for 115,200, 8-N-1 operation.
+  UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 115200,
+                      (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
+                       UART_CONFIG_PAR_NONE));
+
+}
+
+void initializeSysTickTimer(void)
+{
+  NVIC_ST_CTRL_R = 0;
+  NVIC_ST_RELOAD_R = 8000; // 1 ms time interval
+  NVIC_ST_CURRENT_R = 0;
+  NVIC_ST_CTRL_R = 0x05;
+  SysTickIntEnable();
+  SysTickEnable();
+}
+
+void priv_to_unpriv(void)
+{
+  asm volatile("MRS R3, CONTROL\n"
+                "ORR R3, R3, #1\n"
+                "MSR CONTROL, R3\n"
+                "ISB");
+  asm volatile("MRS R0, CONTROL");
+}
+
+void unpriv_to_priv(void)
+{
+  asm volatile("MRS R3, CONTROL\n"
+                "AND R3, R3, 0xFE\n"
+                "MSR CONTROL, R3\n"
+                "ISB");
+  asm volatile("MRS R0, CONTROL");
+}
 
 // This function is called from within user thread context. It executes
 // a jump back to the scheduler. When the scheduler returns here, it acts
 // like a standard function return back to the caller of yield().
 void yield(void)
 {
-  if (setjmp(threads[currThread].state) == 0) {
-    // yield() called from the thread, jump to scheduler context
-    longjmp(scheduler_buf, 1);
-  } else {
-    // longjmp called from scheduler, return to thread context
-    return;
-  }
+  unpriv_to_priv();
+  asm volatile("B schedulerHandler");
+  priv_to_unpriv();
 }
 
 // This is the starting point for all threads. It runs in user thread
@@ -72,6 +145,8 @@ void yield(void)
 // start here.
 void threadStarter(void)
 {
+  IntMasterDisable();
+  iprintf("in currThread <%d>\r\n", currThread);
   // Call the entry point for this thread. The next line returns
   // only when the thread exits.
   (*(threadTable[currThread]))();
@@ -90,75 +165,35 @@ void threadStarter(void)
 // initial jump-buffer (as would setjmp()) but with our own values
 // for the stack (passed to createThread()) and LR (always set to
 // threadStarter() for each thread).
-extern void createThread(jmp_buf buf, char *stack);
+extern void createThread(unsigned *state, char *stack);
+
+extern void saveThreadState(unsigned *state);
+
+extern void restoreThreadState(unsigned *state);
 
 // This is the "main loop" of the program.
-void scheduler(void)
+void schedulerHandler(void)
 {
-  unsigned i;
+  IntMasterDisable();
 
-  currThread = -1;
-  
+  saveThreadState(threads[currThread].state);
+
   do {
-    // It's kinda inefficient to call setjmp() every time through this
-    // loop, huh? I'm sure your code will be better.
-    if (setjmp(scheduler_buf)==0) {
-
-      // We saved the state of the scheduler, now find the next
-      // runnable thread in round-robin fashion. The 'i' variable
-      // keeps track of how many runnable threads there are. If we
-      // make a pass through threads[] and all threads are inactive,
-      // then 'i' will become 0 and we can exit the entire program.
-      i = NUM_THREADS;
-      do {
-        // Round-robin scheduler
-        if (++currThread == NUM_THREADS) {
-          currThread = 0;
-        }
-
-        if (threads[currThread].active) {
-          longjmp(threads[currThread].state, 1);
-        } else {
-          i--;
-        }
-      } while (i > 0);
-
-      // No active threads left. Leave the scheduler, hence the program.
-      return;
-
-    } else {
-      // yield() returns here. Did the thread that just yielded to us exit? If
-      // so, clean up its entry in the thread table.
-      if (! threads[currThread].active) {
-        free(threads[currThread].stack - STACK_SIZE);
-      }
+    if (++currThread >= NUM_THREADS) {
+      currThread = 0;
     }
-  } while (1);
+  } while (!threads[currThread].active); 
+
+  restoreThreadState(threads[currThread].state);
+
+  IntMasterEnable();
 }
 
 void main(void)
 {
   unsigned i;
 
-  // Set the clocking to run directly from the crystal.
-  SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
-                 SYSCTL_XTAL_8MHZ);
-
-  // Initialize the OLED display and write status.
-  RIT128x96x4Init(1000000);
-  RIT128x96x4StringDraw("Scheduler Demo",       20,  0, 15);
-
-  // Enable the peripherals used by this example.
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
-  SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
-
-  // Set GPIO A0 and A1 as UART pins.
-  GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
-
-  // Configure the UART for 115,200, 8-N-1 operation.
-  UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 115200,
-                      (UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE |
-                       UART_CONFIG_PAR_NONE));
+  initializePeriphs();
 
   // Create all the threads and allocate a stack for each one
   for (i=0; i < NUM_THREADS; i++) {
@@ -175,14 +210,31 @@ void main(void)
     // After createThread() executes, we can execute a longjmp()
     // to threads[i].state and the thread will begin execution
     // at threadStarter() with its own stack.
+    iprintf("about to call createThread\r\n");
     createThread(threads[i].state, threads[i].stack);
+    iprintf("createThread completed\r\n");
   }
+
+  unsigned ulLoop;
+  for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
 
   // Initialize the global thread lock
   lock_init(&threadlock);
 
+  iprintf("about to call initializeSysTickTimer\r\n");
+  for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
+  initializeSysTickTimer();
+
+  // iprintf("about to call IntMasterEnable\r\n");
+  // for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
+  IntMasterEnable();
+
+  // iprintf("about to call schedulerHandler\r\n");
+
   // Start running coroutines
-  scheduler();
+  while (1) {
+    // asm volatile("B schedulerHandler");
+  }
 
   // If scheduler() returns, all coroutines are inactive and we return
   // from main() hence exit() should be called implicitly (according to

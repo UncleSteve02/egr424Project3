@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include "rit128x96x4.h"
 #include "scheduler.h"
 #include "lock.h"
 
@@ -41,7 +42,7 @@ void thread3_OLED(void)
     RIT128x96x4Clear();
     // Delay for a bit.
     for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
-    RIT128x96x4StringDraw(string, 5, 50, 5);
+    RIT128x96x4StringDraw("hello", 5, 50, 5);
     for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
     yield();
   }
