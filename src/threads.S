@@ -24,7 +24,7 @@
     .global createThread
 createThread:  
 
-    @Store the actual process stack pointer (char*) in r2 from the char ** in r1
+   @Store the actual process stack pointer (char*) in r2 from the char ** in r1
     ldr     r2, [r1]
 
     @Initialize xPSR (first on stack) with 0x01000000 (Thumb bit set)

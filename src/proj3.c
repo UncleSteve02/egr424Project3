@@ -165,7 +165,7 @@ void threadStarter(void)
 // initial jump-buffer (as would setjmp()) but with our own values
 // for the stack (passed to createThread()) and LR (always set to
 // threadStarter() for each thread).
-extern void createThread(unsigned *state, char *stack);
+extern void createThread(unsigned *state, char **stack);
 
 extern void saveThreadState(unsigned *state);
 
@@ -211,7 +211,7 @@ void main(void)
     // to threads[i].state and the thread will begin execution
     // at threadStarter() with its own stack.
     iprintf("about to call createThread\r\n");
-    createThread(threads[i].state, threads[i].stack);
+    createThread(threads[i].state, &threads[i].stack);
     iprintf("createThread completed\r\n");
   }
 
