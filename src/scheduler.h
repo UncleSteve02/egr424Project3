@@ -14,6 +14,7 @@ extern unsigned lock_acquire(unsigned *lock);
 extern void lock_release(unsigned *lock);
 
 void initializeThreads(void);
+void enter_sleep_mode(void);
 void yield(void);
 void scheduler(void);
 

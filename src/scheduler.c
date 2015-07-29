@@ -29,6 +29,7 @@ extern void thread1_UART(void);
 extern void thread2_LED(void);
 extern void thread3_OLED(void);
 extern void thread4_UART(void);
+extern void idle_thread(void);
 
 // thread_t is a pointer to function with no parameters and
 // no return value...i.e., a user-space thread.
@@ -71,6 +72,11 @@ void initializeThreads(void)
   }
   // Initialize the global thread lock
   lock_init(&threadlock);
+}
+
+void enter_sleep_mode(void)
+{
+  
 }
 
 // This function is called from within user thread context. It executes

@@ -60,3 +60,14 @@ void thread4_UART(void)
     yield();
   }
 }
+
+void idle_thread(void)
+{
+  while (1) {
+    // If we’re running, there’s no useful work to be done
+    enter_sleep_mode();
+    // An interrupt has woken us up and the kernel has processed an ISR.
+    // Let threads run and do useful work
+    yield(); 
+  }
+}
