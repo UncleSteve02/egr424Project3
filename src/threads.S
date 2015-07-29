@@ -22,64 +22,35 @@
     .thumb_func
     .type createThread,function
     .global createThread
-createThread:  
+createThread:
 
-   @Store the actual process stack pointer (char*) in r2 from the char ** in r1
-    ldr     r2, [r1]
+  push {r4-r9, r10, r11}
 
-    @Initialize xPSR (first on stack) with 0x01000000 (Thumb bit set)
-    movw    r3, 0x0000
-    movt    r3, 0x0100
-    stmea   r2!, {r3}   @Store xPSR at the highest memory location on the stack
+  mov r12, #0x0000
+  movt r12, #0x0100
 
-    @Store threadStarter as addressToReturnTo (second on stack)
-    ldr     r3, =threadStarter
-    stmea   r2!, {r3}   @Store addressToReturnTo (threadStarter) on second highest memory on stack
+  ldr  r11, .L0
 
-    @Initialize r0-r3, r12, and r14
-    mov     r3, #0
-    mov     r12, #0
-    stmea   r2!, {r3}           @Simulate storing r14 (LR) as 0
-    stmea   r2!, {r3, r12}      @Store r3, r12 (IP) on stack
-    stmea   r2!, {r3}           @Simulate storing r2 on the stack by using the value 0
-    stmea   r2!, {r3, r12}      @Simulate storing r0 (0) and r1 (0) on stack by storing zeros
+  ldr  r10, =#0xFFFFFFFF
 
-    @Save the pointer to the stack pointer
-    str r2, [r1]
+  mov r9, #0
+  mov r8, #0
+  mov r7, #0
+  mov r6, #0
+  mov r5, #0
 
-    @Store r4-r12 and PSP on array
-    stm     r0, {r2, r4-r12}
+  STMFD r1!, {r5-r12}
+  stmea r0!, {r1,r4-r12}
+  pop {r4-r9, r10, r11}
+  bx      lr
 
-    bx      lr
 
-  /* Save registers in the jump buffer. Their values are
-     not important when the thread is first created. This line is the same as
-     the first two lines of setjmp(), except we don't save SP and LR since we 
-     want to set these to our own values. Really, the only point of this 
-     instruction is to advance R0 to the right location in the jump buffer for 
-     pointing to SP (without having to do any math :-) */
-
-    stmea  R0!, { R1, R4-R11 }
-  
-  /* Now we save SP and LR in that order. SP is the R1 parameter, and we have
-   * to get the address of threadStarter() into a higher register (so they are
-   * placed in the jump buffer in the right order). */
-
-    ldr     R2, .L0
-    mov     R3, 0
-    stmea   R1!, { R3 }
-    stmea   R1!, { R2 }
-    stmea   R1!, { R3 }
-    stmea   R1!, { R3 }
-    stmea   R1!, { R3 }
-    stmea   R1!, { R3 }
-    stmea   R1!, { R3 }
-    stmea   R1!, { R3 }
-
-    bx      lr
-   
 .L0:
     .word   threadStarter
+
+
+
+
 
     .syntax unified
     .text
@@ -88,10 +59,14 @@ createThread:
     .thumb_func
     .type saveThreadState,function
     .global saveThreadState
+
 saveThreadState:
-    mrs     R1, PSP
-    stm     R0, { R1, R4-R12 }
-    bx      lr
+    mrs r1, psp
+    stmia r0, {r1,r4-r12}
+    bx lr
+
+
+
 
     .syntax unified
     .text
@@ -100,10 +75,12 @@ saveThreadState:
     .thumb_func
     .type restoreThreadState,function
     .global restoreThreadState
+
 restoreThreadState:
-    ldr R1, [R0]
-    add R0, R0
-    msr PSP, R1
-    ldm R0, { R4-R12 }
-    bx lr
+  ldmia r0, {r1,r4-r12}
+
+  msr psp, r1
+
+  LDR LR, =0xFFFFFFFD
+  bx lr
 

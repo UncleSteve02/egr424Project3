@@ -24,7 +24,7 @@ unsigned threadlock;
 typedef struct {
   int active;       // non-zero means thread is allowed to run
   char *stack;      // pointer to TOP of stack (highest memory location)
-  unsigned state[40]; // saved state of thread on a 10 element array
+  int state[40]; // saved state of thread on a 10 element array
 } threadStruct_t;
 
 // thread_t is a pointer to function with no parameters and
@@ -51,7 +51,7 @@ static thread_t threadTable[] = {
 // These static global variables are used in scheduler(), in
 // the yield() function, and in threadStarter()
 static threadStruct_t threads[NUM_THREADS]; // the thread table
-unsigned currThread;    // The currently active thread
+unsigned currThread = -1;    // The currently active thread
 
 void initializePeriphs(void)
 {
@@ -61,7 +61,7 @@ void initializePeriphs(void)
   // Set the clocking to run directly from the crystal.
   SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
                  SYSCTL_XTAL_8MHZ);
-  
+
   //
   // LED
   //
@@ -76,7 +76,7 @@ void initializePeriphs(void)
   GPIO_PORTF_DIR_R = 0x01;
   GPIO_PORTF_DEN_R = 0x01;
 
-  // 
+  //
   // OLED
   //
   // Initialize the OLED display and write status.
@@ -105,37 +105,18 @@ void initializeSysTickTimer(void)
   NVIC_ST_CTRL_R = 0;
   NVIC_ST_RELOAD_R = 8000; // 1 ms time interval
   NVIC_ST_CURRENT_R = 0;
-  NVIC_ST_CTRL_R = 0x05;
+  NVIC_ST_CTRL_R = 0x00000007;
   SysTickIntEnable();
   SysTickEnable();
 }
 
-void priv_to_unpriv(void)
-{
-  asm volatile("MRS R3, CONTROL\n"
-                "ORR R3, R3, #1\n"
-                "MSR CONTROL, R3\n"
-                "ISB");
-  asm volatile("MRS R0, CONTROL");
-}
-
-void unpriv_to_priv(void)
-{
-  asm volatile("MRS R3, CONTROL\n"
-                "AND R3, R3, 0xFE\n"
-                "MSR CONTROL, R3\n"
-                "ISB");
-  asm volatile("MRS R0, CONTROL");
-}
 
 // This function is called from within user thread context. It executes
 // a jump back to the scheduler. When the scheduler returns here, it acts
 // like a standard function return back to the caller of yield().
 void yield(void)
 {
-  unpriv_to_priv();
-  asm volatile("B schedulerHandler");
-  priv_to_unpriv();
+  asm volatile("svc #1");
 }
 
 // This is the starting point for all threads. It runs in user thread
@@ -145,8 +126,8 @@ void yield(void)
 // start here.
 void threadStarter(void)
 {
-  IntMasterDisable();
-  iprintf("in currThread <%d>\r\n", currThread);
+
+  //iprintf("in currThread <%d>\r\n", currThread);
   // Call the entry point for this thread. The next line returns
   // only when the thread exits.
   (*(threadTable[currThread]))();
@@ -165,28 +146,28 @@ void threadStarter(void)
 // initial jump-buffer (as would setjmp()) but with our own values
 // for the stack (passed to createThread()) and LR (always set to
 // threadStarter() for each thread).
-extern void createThread(unsigned *state, char **stack);
+extern void createThread(int *state, char *stack);
 
-extern void saveThreadState(unsigned *state);
+extern void saveThreadState(int *state);
 
-extern void restoreThreadState(unsigned *state);
+extern void restoreThreadState(int *state);
 
 // This is the "main loop" of the program.
 void schedulerHandler(void)
 {
-  IntMasterDisable();
 
-  saveThreadState(threads[currThread].state);
+    //Save current thread state
+  if(currThread != -1)
+    saveThreadState(threads[currThread].state);
 
-  do {
+  do
+  {
     if (++currThread >= NUM_THREADS) {
       currThread = 0;
     }
-  } while (!threads[currThread].active); 
+  } while (threads[currThread].active != 1);
 
-  restoreThreadState(threads[currThread].state);
-
-  IntMasterEnable();
+   restoreThreadState(threads[currThread].state);
 }
 
 void main(void)
@@ -210,31 +191,21 @@ void main(void)
     // After createThread() executes, we can execute a longjmp()
     // to threads[i].state and the thread will begin execution
     // at threadStarter() with its own stack.
-    iprintf("about to call createThread\r\n");
-    createThread(threads[i].state, &threads[i].stack);
-    iprintf("createThread completed\r\n");
+    createThread(threads[i].state, (threads[i].stack));
   }
 
   unsigned ulLoop;
   for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
 
+    IntMasterEnable();
   // Initialize the global thread lock
   lock_init(&threadlock);
 
-  iprintf("about to call initializeSysTickTimer\r\n");
   for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
   initializeSysTickTimer();
 
-  // iprintf("about to call IntMasterEnable\r\n");
-  // for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
-  IntMasterEnable();
-
-  // iprintf("about to call schedulerHandler\r\n");
-
+  yield();
   // Start running coroutines
-  while (1) {
-    // asm volatile("B schedulerHandler");
-  }
 
   // If scheduler() returns, all coroutines are inactive and we return
   // from main() hence exit() should be called implicitly (according to
@@ -245,9 +216,9 @@ void main(void)
 
 /*
  * Compile with:
- * ${CC} -o lockdemo.elf -I${STELLARISWARE} -L${STELLARISWARE}/driverlib/gcc 
- *     -Tlinkscript.x -Wl,-Map,lockdemo.map -Wl,--entry,ResetISR 
- *     lockdemo.c create.S threads.c startup_gcc.c syscalls.c rit128x96x4.c 
+ * ${CC} -o lockdemo.elf -I${STELLARISWARE} -L${STELLARISWARE}/driverlib/gcc
+ *     -Tlinkscript.x -Wl,-Map,lockdemo.map -Wl,--entry,ResetISR
+ *     lockdemo.c create.S threads.c startup_gcc.c syscalls.c rit128x96x4.c
  *     -ldriver
  */
 // vim: expandtab ts=2 sw=2 cindent
