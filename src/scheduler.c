@@ -12,8 +12,6 @@
 #include "rit128x96x4.h"
 #include "scheduler.h"
 
-#define STACK_SIZE 4096   // Amount of stack space for each thread
-
 
 // This function is implemented in assembly language. It sets up the
 // initial jump-buffer (as would setjmp()) but with our own values
@@ -32,17 +30,9 @@ extern void thread2_LED(void);
 extern void thread3_OLED(void);
 extern void thread4_UART(void);
 
-// This is the lock variable used by all threads. Interface functions
-// for it are:
-//      void lock_init(unsigned *threadlockptr);        // You write this
-//      unsigned lock_acquire(unsigned *threadlockptr); // Shown in class
-//      void lock_release(unsigned *threadlockptr);     // You write this
-unsigned threadlock;
-
 // thread_t is a pointer to function with no parameters and
 // no return value...i.e., a user-space thread.
 typedef void (*thread_t)(void);
-
 
 static thread_t threadTable[] = {
   thread1_UART,
@@ -52,11 +42,16 @@ static thread_t threadTable[] = {
 };
 
 #define NUM_THREADS (sizeof(threadTable)/sizeof(threadTable[0]))
+#define STACK_SIZE 4096   // Amount of stack space for each thread
 
 // These static global variables are used in scheduler(), in
 // the yield() function, and in threadStarter()
 static threadStruct_t threads[NUM_THREADS]; // the thread table
-unsigned currThread = -1;    // The currently active thread
+
+// This is the lock variable used by UART threads.
+unsigned threadlock;
+// The currently active thread
+unsigned currThread = -1;    
 
 void initializeThreads(void)
 {
@@ -72,10 +67,6 @@ void initializeThreads(void)
       iprintf("Out of memory\r\n");
       exit(1);
     }
-
-    // After createThread() executes, we can execute a longjmp()
-    // to threads[i].state and the thread will begin execution
-    // at threadStarter() with its own stack.
     createThread(threads[i].state, (threads[i].stack));
   }
   // Initialize the global thread lock
@@ -83,8 +74,7 @@ void initializeThreads(void)
 }
 
 // This function is called from within user thread context. It executes
-// a jump back to the scheduler. When the scheduler returns here, it acts
-// like a standard function return back to the caller of yield().
+// a SVC interrupt which will be redirected in the scheduler.
 void yield(void)
 {
   asm volatile("svc #2");
@@ -92,13 +82,11 @@ void yield(void)
 
 // This is the starting point for all threads. It runs in user thread
 // context using the thread-specific stack. The address of this function
-// is saved by createThread() in the LR field of the jump buffer so that
-// the first time the scheduler() does a longjmp() to the thread, we
-// start here.
+// is saved by createThread() in the LR field of the array element so that
+// the first time the scheduler() finishes with a thread, we start here.
 void threadStarter(void)
 {
 
-  //iprintf("in currThread <%d>\r\n", currThread);
   // Call the entry point for this thread. The next line returns
   // only when the thread exits.
   (*(threadTable[currThread]))();
@@ -114,10 +102,10 @@ void threadStarter(void)
 }
 
 // This is the "main loop" of the program.
+// Accessible by SysTick or SVC interrupts.
 void scheduler(void)
 {
-
-    //Save current thread state
+  // Save current thread state
   if(currThread != -1)
     saveThreadState(threads[currThread].state);
 
@@ -126,7 +114,7 @@ void scheduler(void)
     if (++currThread >= NUM_THREADS) {
       currThread = 0;
     }
-  } while (threads[currThread].active != 1);
+  } while (!threads[currThread].active);
 
    restoreThreadState(threads[currThread].state);
 }
