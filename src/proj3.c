@@ -1,6 +1,14 @@
+/***********************************************
+ * Name: Abbi Fair and Steven Demers
+ * Date: 7/30/15
+ * Course: EGR 424
+ * Instructor: Professor Parikh
+ * Assignment: Project 3 - Kernel
+ **********************************************/
+
 #include <stdio.h>
-#include <setjmp.h>
 #include <stdlib.h>
+#include "inc/hw_ints.h"
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
 #include "inc/lm3s6965.h"
@@ -9,6 +17,7 @@
 #include "driverlib/sysctl.h"
 #include "driverlib/systick.h"
 #include "driverlib/uart.h"
+#include "driverlib/timer.h"
 #include "rit128x96x4.h"
 #include "scheduler.h"
 
@@ -27,9 +36,6 @@ void initializePeriphs(void)
   // Enable the GPIO port that is used for the on-board LED.
   SYSCTL_RCGC2_R = SYSCTL_RCGC2_GPIOF;
 
-  // Do a dummy read to insert a few cycles after enabling the peripheral.
-  volatile unsigned long ulLoop = SYSCTL_RCGC2_R;
-
   // Enable the GPIO pin for the LED (PF0).  Set the direction as output, and
   // enable the GPIO pin for digital function.
   GPIO_PORTF_DIR_R = 0x01;
@@ -40,7 +46,7 @@ void initializePeriphs(void)
   //
   // Initialize the OLED display and write status.
   RIT128x96x4Init(1000000);
-  RIT128x96x4StringDraw("Project 3", 20,  0, 15);
+  RIT128x96x4StringDraw("Project 3", 37,  0, 15);
 
   //
   // UART

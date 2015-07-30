@@ -1,14 +1,23 @@
+/***********************************************
+ * Name: Abbi Fair and Steven Demers
+ * Date: 7/30/15
+ * Course: EGR 424
+ * Instructor: Professor Parikh
+ * Assignment: Project 3 - Kernel
+ **********************************************/
+
 #include <stdio.h>
-#include <setjmp.h>
 #include <stdlib.h>
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
 #include "inc/lm3s6965.h"
+#include "inc/hw_nvic.h"
 #include "driverlib/interrupt.h"
 #include "driverlib/gpio.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/systick.h"
 #include "driverlib/uart.h"
+#include "driverlib/timer.h"
 #include "rit128x96x4.h"
 #include "scheduler.h"
 
@@ -29,7 +38,7 @@ extern void thread1_UART(void);
 extern void thread2_LED(void);
 extern void thread3_OLED(void);
 extern void thread4_UART(void);
-extern void idle_thread(void);
+// extern void idle_thread(void);
 
 // thread_t is a pointer to function with no parameters and
 // no return value...i.e., a user-space thread.
@@ -74,11 +83,6 @@ void initializeThreads(void)
   lock_init(&threadlock);
 }
 
-void enter_sleep_mode(void)
-{
-  
-}
-
 // This function is called from within user thread context. It executes
 // a SVC interrupt which will be redirected in the scheduler.
 void yield(void)
@@ -92,7 +96,6 @@ void yield(void)
 // the first time the scheduler() finishes with a thread, we start here.
 void threadStarter(void)
 {
-
   // Call the entry point for this thread. The next line returns
   // only when the thread exits.
   (*(threadTable[currThread]))();
@@ -111,16 +114,16 @@ void threadStarter(void)
 // Accessible by SysTick or SVC interrupts.
 void scheduler(void)
 {
-  // Save current thread state
-  if(currThread != -1)
-    saveThreadState(threads[currThread].state);
-
-  do
-  {
+  if (currThread != -1) {
+    // Save current thread state
+    saveThreadState(threads[currThread].state);  
+  }
+  // do
+  // {
     if (++currThread >= NUM_THREADS) {
       currThread = 0;
     }
-  } while (!threads[currThread].active);
+  // } while (!threads[currThread].active);
 
-   restoreThreadState(threads[currThread].state);
+  restoreThreadState(threads[currThread].state);
 }

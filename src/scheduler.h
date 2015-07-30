@@ -1,3 +1,11 @@
+/***********************************************
+ * Name: Abbi Fair and Steven Demers
+ * Date: 7/30/15
+ * Course: EGR 424
+ * Instructor: Professor Parikh
+ * Assignment: Project 3 - Kernel
+ **********************************************/
+
 #ifndef _SCHEDULER_H_
 #define _SCHEDULER_H_
 
@@ -14,8 +22,6 @@ extern unsigned lock_acquire(unsigned *lock);
 extern void lock_release(unsigned *lock);
 
 void initializeThreads(void);
-void enter_sleep_mode(void);
 void yield(void);
-void scheduler(void);
 
 #endif // _SCHEDULER_H_
