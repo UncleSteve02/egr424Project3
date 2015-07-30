@@ -11,6 +11,9 @@
 #include "driverlib/uart.h"
 #include "rit128x96x4.h"
 #include "scheduler.h"
+#include "driverlib/timer.h"
+#include "inc/hw_ints.h"
+#include "inc/hw_nvic.h"
 
 
 // This function is implemented in assembly language. It sets up the
@@ -29,7 +32,6 @@ extern void thread1_UART(void);
 extern void thread2_LED(void);
 extern void thread3_OLED(void);
 extern void thread4_UART(void);
-extern void idle_thread(void);
 
 // thread_t is a pointer to function with no parameters and
 // no return value...i.e., a user-space thread.
@@ -39,7 +41,7 @@ static thread_t threadTable[] = {
   thread1_UART,
   thread2_LED,
   thread3_OLED,
-  thread4_UART
+  thread4_UART,
 };
 
 #define NUM_THREADS (sizeof(threadTable)/sizeof(threadTable[0]))
@@ -51,8 +53,10 @@ static threadStruct_t threads[NUM_THREADS]; // the thread table
 
 // This is the lock variable used by UART threads.
 unsigned threadlock;
-// The currently active thread
-unsigned currThread = -1;    
+
+//active thread right now
+//start at -1 for first pass
+unsigned currThread = -1;
 
 void initializeThreads(void)
 {
@@ -74,16 +78,11 @@ void initializeThreads(void)
   lock_init(&threadlock);
 }
 
-void enter_sleep_mode(void)
-{
-  
-}
-
 // This function is called from within user thread context. It executes
 // a SVC interrupt which will be redirected in the scheduler.
 void yield(void)
 {
-  asm volatile("svc #2");
+    asm volatile("svc #2");
 }
 
 // This is the starting point for all threads. It runs in user thread
@@ -111,16 +110,18 @@ void threadStarter(void)
 // Accessible by SysTick or SVC interrupts.
 void scheduler(void)
 {
-  // Save current thread state
+    //Start Context Switch Time Measurement
+
   if(currThread != -1)
     saveThreadState(threads[currThread].state);
 
-  do
-  {
-    if (++currThread >= NUM_THREADS) {
-      currThread = 0;
-    }
-  } while (!threads[currThread].active);
+  currThread++;
+  while(!threads[currThread].active){
+        if (currThread++ >= NUM_THREADS)
+          currThread = 0;
+  }
+
+    //Stop Context Switch Time Measurement
 
    restoreThreadState(threads[currThread].state);
 }

@@ -28,7 +28,9 @@ void thread2_LED(void)
   volatile unsigned ulLoop;
   while (1) {
     // Delay for a bit.
-    for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
+    for(ulLoop = 0; ulLoop < 50000; ulLoop++)
+        if(ulLoop==25000)
+            LED_BB^=1;
     // Toggle LED
     LED_BB ^= 1;
   }
@@ -41,9 +43,7 @@ void thread3_OLED(void)
     // Clear OLED screen
     RIT128x96x4Clear();
     // Delay for a bit.
-    for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
     RIT128x96x4StringDraw("hello", 5, 50, 5);
-    for(ulLoop = 0; ulLoop < 200000; ulLoop++) {}
     yield();
   }
 }
@@ -58,16 +58,5 @@ void thread4_UART(void)
       lock_release(&threadlock);
     }
     yield();
-  }
-}
-
-void idle_thread(void)
-{
-  while (1) {
-    // If we’re running, there’s no useful work to be done
-    enter_sleep_mode();
-    // An interrupt has woken us up and the kernel has processed an ISR.
-    // Let threads run and do useful work
-    yield(); 
   }
 }
